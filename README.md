@@ -24,6 +24,5 @@ A fast and stylish CSV splitter with a hacker-themed GUI, designed for ultra-lar
 
 ## Installation
 
-1. Make sure you have **Python 3.14** installed.  
-2. Install required packages:
+1. Make sure you have **Python 3.14** installed
 
