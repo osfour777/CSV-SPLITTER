@@ -17,7 +17,7 @@ A fast and stylish CSV splitter with a hacker-themed GUI, designed for ultra-lar
 - ✅ Option to keep or remove the header  
 - ✅ Select output folder  
 - ✅ Ultra-fast chunked reading (handles 1M+ rows efficiently)  
-- ✅ Hacker Green Theme with **Osfour Pakistan Pride** branding  
+- ✅ Hacker Green Theme  
 
 ---
 
