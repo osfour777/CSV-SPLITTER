@@ -1,0 +1,374 @@
+#!/usr/bin/env python3
+
+# MADE BY OSFOUR PAKISTAN PRIDE 
+
+import csv
+import os
+import sys
+import threading
+import math
+import time
+import random
+
+# GUI imports
+try:
+    import tkinter as tk
+    from tkinter import filedialog, ttk, messagebox
+except Exception:
+    print("tkinter not available — GUI won't run. Use CLI mode.")
+    tk = None
+
+# ---------------------------
+# Core splitting functions
+# ---------------------------
+
+def save_chunk(input_file, file_count, rows, header, output_folder, base_name=None):
+    if base_name is None:
+        base_name = os.path.basename(input_file).rsplit(".", 1)[0]
+    os.makedirs(output_folder, exist_ok=True)
+    output_file = os.path.join(output_folder, f"{base_name}_part_{file_count}.csv")
+    with open(output_file, "w", encoding="utf-8", newline="") as outfile:
+        writer = csv.writer(outfile)
+        if header:
+            writer.writerow(header)
+        writer.writerows(rows)
+    return output_file
+
+def stream_split_by_rows(input_file, rows_per_file, keep_header, output_folder, progress_callback=None):
+    total_bytes = os.path.getsize(input_file)
+    processed_bytes = 0
+    file_count = 1
+    rows = []
+    with open(input_file, "r", encoding="utf-8", newline="") as infile:
+        reader = csv.reader(infile)
+        header = next(reader) if keep_header else None
+        for row in reader:
+            rows.append(row)
+            processed_bytes += sum(len(cell) for cell in row) + max(0, len(row)-1)
+            if progress_callback:
+                progress_callback(processed_bytes, total_bytes)
+            if len(rows) >= rows_per_file:
+                save_chunk(input_file, file_count, rows, header, output_folder)
+                file_count += 1
+                rows = []
+        if rows:
+            save_chunk(input_file, file_count, rows, header, output_folder)
+
+def stream_split_by_size(input_file, mb_size, keep_header, output_folder, progress_callback=None):
+    max_bytes = mb_size * 1024 * 1024
+    total_bytes = os.path.getsize(input_file)
+    processed_bytes = 0
+    file_count = 1
+    rows = []
+    current_chunk_bytes = 0
+    with open(input_file, "r", encoding="utf-8", newline="") as infile:
+        reader = csv.reader(infile)
+        header = next(reader) if keep_header else None
+        for row in reader:
+            row_bytes = sum(len(cell) for cell in row) + max(0, len(row)-1)
+            if current_chunk_bytes + row_bytes >= max_bytes and rows:
+                save_chunk(input_file, file_count, rows, header, output_folder)
+                file_count += 1
+                rows = []
+                current_chunk_bytes = 0
+            rows.append(row)
+            current_chunk_bytes += row_bytes
+            processed_bytes += row_bytes
+            if progress_callback:
+                progress_callback(processed_bytes, total_bytes)
+        if rows:
+            save_chunk(input_file, file_count, rows, header, output_folder)
+
+def split_into_n_parts(input_file, num_parts, keep_header, output_folder, progress_callback=None):
+    # First pass: count rows
+    with open(input_file, "r", encoding="utf-8", newline="") as infile:
+        total_rows = sum(1 for _ in infile) - (1 if keep_header else 0)
+    if total_rows <= 0:
+        raise ValueError("No data rows found in file.")
+    rows_per_part = math.ceil(total_rows / max(1, num_parts))
+    # Second pass: stream and write
+    total_bytes = os.path.getsize(input_file)
+    processed_bytes = 0
+    file_count = 1
+    rows = []
+    with open(input_file, "r", encoding="utf-8", newline="") as infile:
+        reader = csv.reader(infile)
+        header = next(reader) if keep_header else None
+        for row in reader:
+            rows.append(row)
+            processed_bytes += sum(len(cell) for cell in row) + max(0, len(row)-1)
+            if progress_callback:
+                progress_callback(processed_bytes, total_bytes)
+            if len(rows) >= rows_per_part:
+                save_chunk(input_file, file_count, rows, header, output_folder)
+                file_count += 1
+                rows = []
+        if rows:
+            save_chunk(input_file, file_count, rows, header, output_folder)
+
+# ---------------------------
+# Threaded runner helper
+# ---------------------------
+
+def run_in_thread(target, *args, on_done=None, on_error=None):
+    def worker():
+        try:
+            target(*args)
+            if on_done:
+                on_done()
+        except Exception as e:
+            if on_error:
+                on_error(e)
+            else:
+                print("Error:", e)
+    t = threading.Thread(target=worker, daemon=True)
+    t.start()
+    return t
+
+def build_hacker_gui(prefill_file=None, auto_start=False, pre_args=None):
+    if not tk:
+        print("tkinter not available — GUI can't start.")
+        return
+
+    root = tk.Tk()
+    root.title("CSV Splitter Ultra  —  MATRIX (osfour - Pakistan Pride)")
+    root.configure(bg="black")
+    root.geometry("780x520")
+    root.minsize(720, 480)
+
+    # Fonts and colors
+    font_size = 12
+    monospace = ("Consolas", 11)
+    big_mono = ("Consolas", 13, "bold")
+
+    # Canvas for Matrix animation
+    canvas = tk.Canvas(root, bg="black", highlightthickness=0)
+    canvas.place(relx=0, rely=0, relwidth=1, relheight=1)
+
+    # Prepare matrix columns
+    matrix_letters = "01" + "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789@#$%^&*()"
+    num_cols = 80
+    cols = []
+    for i in range(num_cols):
+        x = 8 + i * (font_size * 0.7)
+        y = random.randint(-300, 0)
+        speed = 2 + (i % 4)
+        cols.append({"x": x, "y": y, "speed": speed})
+
+    # Foreground panel
+    panel = tk.Frame(root, bg="#000000")
+    panel.place(relx=0.03, rely=0.06, relwidth=0.94, relheight=0.88)
+
+    # Header with your name
+    title = tk.Label(panel, text="CSV Splitter Ultra", bg="black", fg="#33ff66", font=("Consolas", 16, "bold"))
+    title.pack(pady=(8,4))
+    credit = tk.Label(panel, text="Made by: osfour – Pakistan Pride", bg="black", fg="#99ff99", font=("Consolas", 16, "italic"))
+    credit.pack(pady=(0,6))
+
+    # Top frame: file & output
+    top_frame = tk.Frame(panel, bg="black")
+    top_frame.pack(fill="x", padx=12, pady=6)
+
+    tk.Label(top_frame, text="Input CSV:", bg="black", fg="#66ff66", font=monospace).grid(row=0, column=0, sticky="w")
+    file_entry = tk.Entry(top_frame, font=monospace, bg="#071a07", fg="#9aff9a", insertbackground="#9aff9a", relief="flat")
+    file_entry.grid(row=0, column=1, sticky="we", padx=6)
+    def browse_file():
+        path = filedialog.askopenfilename(filetypes=[("CSV files","*.csv"),("All files","*.*")])
+        if path:
+            file_entry.delete(0, tk.END)
+            file_entry.insert(0, path)
+    tk.Button(top_frame, text="BROWSE", command=browse_file, bg="#001400", fg="#ccffcc", font=("Consolas",9)).grid(row=0, column=2, padx=6)
+
+    tk.Label(top_frame, text="Output folder:", bg="black", fg="#66ff66", font=monospace).grid(row=1, column=0, sticky="w", pady=6)
+    out_entry = tk.Entry(top_frame, font=monospace, bg="#071a07", fg="#9aff9a", insertbackground="#9aff9a", relief="flat")
+    out_entry.grid(row=1, column=1, sticky="we", padx=6)
+    def choose_out():
+        fld = filedialog.askdirectory()
+        if fld:
+            out_entry.delete(0, tk.END)
+            out_entry.insert(0, fld)
+    tk.Button(top_frame, text="CHOOSE", command=choose_out, bg="#001400", fg="#ccffcc", font=("Consolas",9)).grid(row=1, column=2, padx=6)
+    top_frame.grid_columnconfigure(1, weight=1)
+
+    # Options
+    opt_frame = tk.Frame(panel, bg="black")
+    opt_frame.pack(fill="x", padx=12, pady=(6,8))
+
+    keep_header_var = tk.BooleanVar(value=True)
+    tk.Checkbutton(opt_frame, text="Keep header row", variable=keep_header_var, bg="black", fg="#66ff66", selectcolor="#001400", font=monospace).grid(row=0, column=0, padx=6, sticky="w")
+
+    mode_var = tk.StringVar(value="rows")
+    tk.Radiobutton(opt_frame, text="Split by rows", variable=mode_var, value="rows", bg="black", fg="#99ff99", selectcolor="#001400", font=monospace).grid(row=0, column=1, padx=6, sticky="w")
+    tk.Radiobutton(opt_frame, text="Split by size (MB)", variable=mode_var, value="size", bg="black", fg="#99ff99", selectcolor="#001400", font=monospace).grid(row=0, column=2, padx=6, sticky="w")
+    tk.Radiobutton(opt_frame, text="Split into N equal parts", variable=mode_var, value="parts", bg="black", fg="#99ff99", selectcolor="#001400", font=monospace).grid(row=0, column=3, padx=6, sticky="w")
+
+    tk.Label(opt_frame, text="Number:", bg="black", fg="#66ff66", font=monospace).grid(row=1, column=0, pady=6, sticky="w")
+    number_entry = tk.Entry(opt_frame, bg="#071a07", fg="#9aff9a", insertbackground="#9aff9a", font=monospace, relief="flat")
+    number_entry.grid(row=1, column=1, sticky="w", padx=6)
+
+    # Buttons
+    btn_frame = tk.Frame(panel, bg="black")
+    btn_frame.pack(fill="x", padx=12, pady=(0,10))
+    start_btn = tk.Button(btn_frame, text="LAUNCH", bg="#001a00", fg="#bbffbb", font=("Consolas", 12, "bold"))
+    start_btn.pack(side="left", padx=8)
+    start_close_btn = tk.Button(btn_frame, text="LAUNCH & CLOSE", bg="#002200", fg="#bbffbb", font=("Consolas", 12))
+    start_close_btn.pack(side="left", padx=6)
+    cancel_btn = tk.Button(btn_frame, text="ABORT", bg="#220000", fg="#ffbbbb", font=("Consolas", 11))
+    cancel_btn.pack(side="right", padx=8)
+
+    # Terminal-style output
+    term_frame = tk.Frame(panel, bg="#000000")
+    term_frame.pack(fill="both", expand=True, padx=12, pady=(0,12))
+    term_box = tk.Text(term_frame, bg="#001200", fg="#b7ffb7", insertbackground="#b7ffb7", font=("Consolas", 11), state="disabled", relief="flat")
+    term_box.pack(fill="both", expand=True, side="left", padx=(0,6))
+    vscroll = tk.Scrollbar(term_frame, command=term_box.yview)
+    vscroll.pack(side="right", fill="y")
+    term_box.config(yscrollcommand=vscroll.set)
+    term_box.tag_configure("green", foreground="#9aff9a")
+
+    # Neon progress bar
+    pframe = tk.Frame(panel, bg="black")
+    pframe.pack(fill="x", padx=12, pady=(0,8))
+    progress_canvas = tk.Canvas(pframe, height=18, bg="#041004", highlightthickness=0)
+    progress_canvas.pack(fill="x", side="left", expand=True)
+    percent_label = tk.Label(pframe, text="0.0%", bg="black", fg="#33ff66", font=("Consolas", 10, "bold"))
+    percent_label.pack(side="right", padx=8)
+
+    ready_label = tk.Label(panel, text="READY", bg="black", fg="#33ff66", font=("Consolas", 10, "bold"))
+    ready_label.place(relx=0.85, rely=0.02)
+
+    def term_write(line):
+        term_box.config(state="normal")
+        term_box.insert("end", line + "\n")
+        term_box.see("end")
+        term_box.config(state="disabled")
+
+    def set_progress(pct):
+        progress_canvas.delete("bar")
+        w = progress_canvas.winfo_width() or 600
+        fill_w = int((pct / 100.0) * w)
+        if fill_w > 0:
+            progress_canvas.create_rectangle(0, 0, fill_w, 18, fill="#00ff33", tags="bar")
+            progress_canvas.create_rectangle(0, 0, fill_w, 18, outline="#66ff66", width=1, tags="bar")
+        percent_label.config(text=f"{pct:.1f}%")
+        progress_canvas.update_idletasks()
+
+    # Pulsing READY
+    def pulse_ready():
+        try:
+            t = time.time()
+            glow = (math.sin(t * 3) + 1) / 2
+            val = int(51 + glow * 204)
+            hexc = f"#{val:02x}{255:02x}{val:02x}"
+            ready_label.config(fg=hexc)
+        except Exception:
+            pass
+        root.after(120, pulse_ready)
+
+    # Matrix animation
+    def matrix_step():
+        canvas.delete("matrix")
+        cw = canvas.winfo_width() or 780
+        ch = canvas.winfo_height() or 520
+        for c in cols:
+            char = random.choice(matrix_letters)
+            x = c["x"]
+            y = c["y"]
+            canvas.create_text(x, y, text=char, anchor="nw", font=("Consolas", font_size, "bold"), fill="#b6ffb6", tags="matrix")
+            tail_y = y - font_size
+            for t in range(1, 5):
+                canvas.create_text(x, tail_y + t * font_size, text=random.choice(matrix_letters), anchor="nw", font=("Consolas", font_size), fill="#0d6b0d", tags="matrix")
+            c["y"] += c["speed"]
+            if c["y"] > ch + 30:
+                c["y"] = random.randint(-200, -10)
+        root.after(70, matrix_step)
+
+    # Progress callback used by worker threads
+    current_total_bytes = 1
+    def progress_cb(done, total):
+        nonlocal current_total_bytes
+        current_total_bytes = total or 1
+        pct = (done / current_total_bytes) * 100 if current_total_bytes else 0
+        set_progress(min(max(pct, 0.0), 100.0))
+        percent_label.config(text=f"{pct:.1f}%")
+        term_write(f"[{time.strftime('%H:%M:%S')}] processed ~{done} / {total} bytes")
+
+    def on_done():
+        term_write(f"[{time.strftime('%H:%M:%S')}] Completed successfully.")
+        set_progress(100.0)
+
+    def on_error(e):
+        term_write(f"[{time.strftime('%H:%M:%S')}] ERROR: {e}")
+        messagebox.showerror("CSV Splitter - Error", str(e))
+
+    def start_action(auto_close=False):
+        input_file = file_entry.get().strip()
+        output_folder = out_entry.get().strip() or os.getcwd()
+        if not input_file or not os.path.isfile(input_file):
+            messagebox.showerror("Input error", "Please choose a valid input CSV file.")
+            return
+        try:
+            number = int(number_entry.get().strip())
+        except Exception:
+            messagebox.showerror("Input error", "Please enter a valid integer for number (rows/MB/parts).")
+            return
+        keep_header = keep_header_var.get()
+        mode = mode_var.get()
+        term_write(f"[{time.strftime('%H:%M:%S')}] Starting split: mode={mode}, number={number}, keep_header={keep_header}")
+        if mode == "rows":
+            run_in_thread(stream_split_by_rows, input_file, number, keep_header, output_folder, progress_cb, on_done=on_done, on_error=on_error)
+        elif mode == "size":
+            run_in_thread(stream_split_by_size, input_file, number, keep_header, output_folder, progress_cb, on_done=on_done, on_error=on_error)
+        elif mode == "parts":
+            run_in_thread(split_into_n_parts, input_file, number, keep_header, output_folder, progress_cb, on_done=on_done, on_error=on_error)
+        if auto_close:
+            root.after(2000, root.destroy)
+
+    # Wire buttons
+    start_btn.config(command=lambda: start_action(False))
+    start_close_btn.config(command=lambda: start_action(True))
+    cancel_btn.config(command=lambda: term_write(f"[{time.strftime('%H:%M:%S')}] ABORT requested."))
+
+    # Pre-fill if provided
+    if prefill_file:
+        file_entry.delete(0, tk.END)
+        file_entry.insert(0, prefill_file)
+    if pre_args:
+        try:
+            mode_var.set(pre_args.get("mode", "rows"))
+            number_entry.delete(0, tk.END)
+            number_entry.insert(0, str(pre_args.get("number", "")))
+            out_entry.delete(0, tk.END)
+            out_entry.insert(0, pre_args.get("out", os.getcwd()))
+            keep_header_var.set(pre_args.get("header", True))
+            if auto_start:
+                root.after(400, lambda: start_action(True))
+        except Exception:
+            pass
+
+    # Start animation & pulsing
+    pulse_ready()
+    matrix_step()
+
+    root.mainloop()
+
+# ---------------------------
+# Entry point and drag-drop behaviour
+# ---------------------------
+
+def main_entry():
+    argv = sys.argv[1:]
+    cli_triggers = {"--rows","--mb","--parts","-i","--input","-o","--output","--no-header"}
+    if any(arg in cli_triggers for arg in argv):
+        # simple CLI behavior: expect -i and -o etc. (not implemented here)
+        print("CLI mode detected. Use the GUI version for now.")
+        return
+    if argv:
+        # If user dropped file onto exe, open GUI prefilled
+        first = argv[0]
+        build_hacker_gui(prefill_file=first, auto_start=False, pre_args=None)
+    else:
+        build_hacker_gui()
+
+if __name__ == "__main__":
+    main_entry()
