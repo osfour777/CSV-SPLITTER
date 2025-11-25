@@ -21,17 +21,9 @@ A fast and stylish CSV splitter with a hacker-themed GUI, designed for ultra-lar
 
 ---
 
-## Screenshot
-
-
-*Example of the hacker-style GUI in action.*
-
----
 
 ## Installation
 
-1. Make sure you have **Python 3.13+** installed.  
+1. Make sure you have **Python 3.14** installed.  
 2. Install required packages:
 
-```bash
-pip install -r requirements.txt
